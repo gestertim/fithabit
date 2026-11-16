@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FitHabit - Daily Body Fitness Tracker</title>
+<style>
+  :root { font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif; --bg:#f4f7f5; --card:#fff; --line:#e2e8e4; --text:#1f2a24; --muted:#6b786f; --accent:#16a34a; --accent-d:#15803d; --tint:#dcfce7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121815; --card:#1b2420; --line:#2a352f; --text:#e8f0ea; --muted:#92a197; --tint:#1d3b29; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); }
+  button, input, select { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+  .shell { max-width:720px; margin:auto; padding:28px 18px 60px; }
+  header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  h1 { margin:0; font-size:26px; letter-spacing:-.5px; }
+  .date { color:var(--muted); font-size:14px; }
+  .right { display:flex; align-items:center; gap:12px; }
+  .lang { border:1px solid var(--line); background:var(--card); border-radius:99px; padding:6px 14px; font-size:13px; font-weight:600; }
+  .lang:hover { border-color:var(--accent); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-top:16px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; text-align:center; }
+  .stat b { display:block; font-size:24px; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .bar { height:10px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:10px; }
+  .bar i { display:block; height:100%; background:var(--accent); width:0; transition:width .3s; }
+  .habit { display:flex; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+  .habit:first-child { border-top:0; }
+  .check { width:30px; height:30px; border-radius:50%; border:2px solid var(--line); background:transparent; flex-shrink:0; display:grid; place-items:center; font-size:16px; color:#fff; }
+  .habit.done .check { background:var(--accent); border-color:var(--accent); }
+  .habit.done .name { text-decoration:line-through; color:var(--muted); }
+  .info { flex:1; min-width:0; }
+  .name { font-weight:600; }
+  .meta { font-size:12px; color:var(--muted); }
+  .del { background:none; border:0; color:var(--muted); font-size:18px; padding:4px 8px; }
+  .del:hover { color:#dc2626; }
+  form { display:flex; gap:8px; flex-wrap:wrap; }
+  form input, form select { border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:10px 12px; }
+  form input[name=name] { flex:1; min-width:140px; }
+  form input[type=number] { width:90px; }
+  .add { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:10px 18px; font-weight:600; }
+  .add:hover { background:var(--accent-d); }
+  h2 { font-size:15px; margin:0 0 12px; }
+  .week { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; align-items:end; height:110px; }
+  .col { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:4px; font-size:11px; color:var(--muted); }
+  .col i { width:100%; background:var(--accent); border-radius:6px 6px 0 0; min-height:3px; opacity:.85; }
+  .col.today { color:var(--text); font-weight:700; }
+  .empty { color:var(--muted); text-align:center; padding:16px 0; }
+  :focus-visible { outline:3px solid #4ade80; outline-offset:2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <h1 id="title"></h1>
+    <div class="right">
+      <div class="date" id="date"></div>
+      <button class="lang" id="langBtn" type="button"></button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><b id="sToday">0/0</b><span data-i18n="doneToday"></span></div>
+    <div class="stat"><b id="sStreak">0</b><span data-i18n="streak"></span></div>
+    <div class="stat"><b id="sBest">0</b><span data-i18n="best"></span></div>
+  </div>
+  <div class="bar" aria-hidden="true"><i id="progress"></i></div>
+
+  <div class="card">
+    <h2 data-i18n="todayHabits"></h2>
+    <div id="list"></div>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="addHabit"></h2>
+    <form id="form">
+      <input name="name" data-i18n-ph="namePh" required maxlength="40" data-i18n-aria="habitName">
+      <input name="target" type="number" min="1" data-i18n-ph="target" data-i18n-aria="target">
+      <select name="unit" id="unitSel" data-i18n-aria="unit"></select>
+      <button class="add" data-i18n="add"></button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 data-i18n="last7"></h2>
+    <div class="week" id="week"></div>
+  </div>
+</div>
+
+<script>
+const KEY = 'fithabit.v1';
+const I18N = {
+  zh: {
+    title: '💪 FitHabit 健身習慣', doneToday: '今日完成', streak: '連續天數 🔥', best: '最佳紀錄',
+    todayHabits: '今日健身習慣', addHabit: '新增習慣', namePh: '例如：伏地挺身', habitName: '習慣名稱',
+    target: '目標', unit: '單位', add: '新增', last7: '過去 7 天（完成百分比）',
+    empty: '尚無習慣，請在下方新增。', mark: '標記完成', unmark: '取消完成', del: '刪除',
+    confirmDel: n => `確定刪除「${n}」？`, toggle: 'English',
+    reps: '次', minutes: '分鐘', steps: '步', glasses: '杯', hours: '小時',
+    pushups: '伏地挺身', squats: '深蹲', plank: '棒式', walk: '走路／跑步', water: '喝水', stretch: '伸展',
+    locale: 'zh-TW',
+  },
+  en: {
+    title: '💪 FitHabit', doneToday: 'Done today', streak: 'Day streak 🔥', best: 'Best streak',
+    todayHabits: "Today's workout habits", addHabit: 'Add a habit', namePh: 'e.g. Push-ups', habitName: 'Habit name',
+    target: 'Target', unit: 'Unit', add: 'Add', last7: 'Last 7 days (% completed)',
+    empty: 'No habits yet. Add one below.', mark: 'Mark', unmark: 'Unmark', del: 'Delete',
+    confirmDel: n => `Delete "${n}"?`, toggle: '中文',
+    reps: 'reps', minutes: 'minutes', steps: 'steps', glasses: 'glasses', hours: 'hours',
+    pushups: 'Push-ups', squats: 'Squats', plank: 'Plank', walk: 'Walk / run', water: 'Drink water', stretch: 'Stretching',
+    locale: 'en-US',
+  },
+};
+const UNITS = ['reps', 'minutes', 'steps', 'glasses', 'hours'];
+let lang = localStorage.getItem('fithabit.lang');
+if (!I18N[lang]) lang = 'zh';
+const t = k => I18N[lang][k];
+
+const defaults = [
+  { id: 1, k: 'pushups', target: 30, unit: 'reps' },
+  { id: 2, k: 'squats', target: 40, unit: 'reps' },
+  { id: 3, k: 'plank', target: 2, unit: 'minutes' },
+  { id: 4, k: 'walk', target: 8000, unit: 'steps' },
+  { id: 5, k: 'water', target: 8, unit: 'glasses' },
+  { id: 6, k: 'stretch', target: 10, unit: 'minutes' },
+];
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY)); } catch { state = null; }
+if (!state || !Array.isArray(state.habits)) state = { habits: defaults, log: {} };
+// Link habits saved by the earlier English-only version to translatable names.
+const legacy = { 'Push-ups': 'pushups', 'Squats': 'squats', 'Plank': 'plank', 'Walk / run': 'walk', 'Drink water': 'water', 'Stretching': 'stretch' };
+state.habits.forEach(h => { if (!h.k && h.id <= 6 && legacy[h.name]) h.k = legacy[h.name]; });
+const habitName = h => h.k ? t(h.k) : h.name;
+
+const save = () => localStorage.setItem(KEY, JSON.stringify(state));
+const keyOf = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d; };
+const $ = id => document.getElementById(id);
+
+function pct(date) {
+  const done = state.log[keyOf(date)] || [];
+  const total = state.habits.length;
+  if (!total) return 0;
+  return state.habits.filter(h => done.includes(h.id)).length / total;
+}
+
+function streaks() {
+  let current = 0, best = 0, run = 0;
+  const first = Object.keys(state.log).sort()[0];
+  if (first) {
+    const start = new Date(first + 'T00:00:00');
+    for (let d = new Date(start); keyOf(d) <= keyOf(new Date()); d.setDate(d.getDate() + 1)) {
+      if (pct(d) >= 1) { run++; best = Math.max(best, run); } else run = 0;
+    }
+  }
+  // Streak counts back from today, or from yesterday if today isn't finished yet.
+  let i = pct(new Date()) >= 1 ? 0 : 1;
+  while (pct(daysAgo(i)) >= 1 && i < 3650) { current++; i++; }
+  return { current, best };
+}
+
+function toggle(id) {
+  const k = keyOf(new Date());
+  const done = state.log[k] || (state.log[k] = []);
+  const i = done.indexOf(id);
+  i >= 0 ? done.splice(i, 1) : done.push(id);
+  save(); render();
+}
+
+function applyLang() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : 'en';
+  document.title = 'FitHabit - ' + (lang === 'zh' ? '每日健身習慣追蹤' : 'Daily Body Fitness Tracker');
+  $('title').textContent = t('title');
+  $('langBtn').textContent = t('toggle');
+  document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+  document.querySelectorAll('[data-i18n-aria]').forEach(e => e.setAttribute('aria-label', t(e.dataset.i18nAria)));
+  const sel = $('unitSel'), cur = sel.value;
+  sel.textContent = '';
+  UNITS.forEach(u => sel.add(new Option(t(u), u)));
+  if (cur) sel.value = cur;
+}
+
+function render() {
+  const today = keyOf(new Date());
+  const done = state.log[today] || [];
+  $('date').textContent = new Date().toLocaleDateString(t('locale'), { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const list = $('list');
+  list.textContent = '';
+  if (!state.habits.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = t('empty'); list.append(e); }
+  state.habits.forEach(h => {
+    const isDone = done.includes(h.id);
+    const row = document.createElement('div');
+    row.className = 'habit' + (isDone ? ' done' : '');
+    const check = document.createElement('button');
+    check.className = 'check';
+    check.textContent = isDone ? '✓' : '';
+    check.setAttribute('aria-label', `${t(isDone ? 'unmark' : 'mark')} ${habitName(h)}`);
+    check.setAttribute('aria-pressed', isDone);
+    check.onclick = () => toggle(h.id);
+    const info = document.createElement('div');
+    info.className = 'info';
+    const name = document.createElement('div'); name.className = 'name';     name.textContent = habitName(h);
+    const meta = document.createElement('div'); meta.className = 'meta';
+        const u = I18N[lang][h.unit] || h.unit;
+        meta.textContent = h.target ? `${h.target} ${u}` : u;
+    info.append(name, meta);
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '✕'; del.    setAttribute('aria-label', `${t('del')} ${habitName(h)}`);
+    del.onclick = () => {
+          if (!confirm(t('confirmDel')(habitName(h)))) return;
+      state.habits = state.habits.filter(x => x.id !== h.id);
+      save(); render();
+    };
+    row.append(check, info, del);
+    list.append(row);
+  });
+
+  const total = state.habits.length;
+  const count = state.habits.filter(h => done.includes(h.id)).length;
+  $('sToday').textContent = `${count}/${total}`;
+  $('progress').style.width = (total ? count / total * 100 : 0) + '%';
+  const s = streaks();
+  $('sStreak').textContent = s.current;
+  $('sBest').textContent = s.best;
+
+  const week = $('week');
+  week.textContent = '';
+  for (let n = 6; n >= 0; n--) {
+    const d = daysAgo(n);
+    const p = Math.round(pct(d) * 100);
+    const col = document.createElement('div');
+    col.className = 'col' + (n === 0 ? ' today' : '');
+    col.title = `${p}%`;
+    const bar = document.createElement('i');
+    bar.style.height = Math.max(p, 3) + '%';
+    const label = document.createElement('span');
+    label.textContent = d.toLocaleDateString(t('locale'), { weekday: 'short' });
+    col.append(bar, label);
+    week.append(col);
+  }
+}
+
+$('form').onsubmit = e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const name = f.get('name').trim();
+  if (!name) return;
+  state.habits.push({ id: Date.now(), name, target: Number(f.get('target')) || 0, unit: f.get('unit') });
+  save(); e.target.reset(); render();
+};
+
+$('langBtn').onclick = () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  localStorage.setItem('fithabit.lang', lang);
+  applyLang(); render();
+};
+
+applyLang();
+render();
+</script>
+</body>
+</html>
